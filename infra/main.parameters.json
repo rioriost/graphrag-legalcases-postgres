@@ -17,9 +17,6 @@
       "runningOnGh": {
         "value": "${GITHUB_ACTIONS}"
       },
-      "openAILocation": {
-        "value": "japaneast"
-      },
       "deployAzureOpenAI": {
         "value": "${DEPLOY_AZURE_OPENAI=true}"
       },
@@ -33,16 +30,16 @@
         "value": "${OPENAI_CHAT_HOST=azure}"
       },
       "chatModelName": {
-        "value": "${AZURE_OPENAI_CHAT_MODEL=gpt-35-turbo-16k}"
+        "value": "${AZURE_OPENAI_CHAT_MODEL=gpt-4o}"
       },
       "chatDeploymentName": {
-        "value": "${AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-35-turbo-16k}"
+        "value": "${AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4o}"
       },
       "chatDeploymentVersion":{
-        "value": "${AZURE_OPENAI_CHAT_DEPLOYMENT_VERSION=0613}"
+        "value": "${AZURE_OPENAI_CHAT_DEPLOYMENT_VERSION=2024-08-06}"
       },
       "chatDeploymentSku": {
-        "value": "${AZURE_OPENAI_CHAT_DEPLOYMENT_SKU=Standard}"
+        "value": "${AZURE_OPENAI_CHAT_DEPLOYMENT_SKU=GlobalStandard}"
       },
       "chatDeploymentCapacity":{
         "value": "${AZURE_OPENAI_CHAT_DEPLOYMENT_CAPACITY=30}"

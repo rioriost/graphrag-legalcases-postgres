@@ -7,16 +7,6 @@ param name string
 
 @minLength(1)
 @description('Primary location for all resources')
-param location string
-
-@description('Whether the deployment is running on GitHub Actions')
-param runningOnGh string = ''
-
-@description('Id of the user or app to assign application roles')
-param principalId string = ''
-
-@minLength(1)
-@description('Location for the OpenAI resource')
 // Look for desired models on the availability table:
 // https://learn.microsoft.com/azure/ai-services/openai/concepts/models#global-standard-model-availability
 @allowed([
@@ -48,7 +38,13 @@ param principalId string = ''
     type: 'location'
   }
 })
-param openAILocation string
+param location string
+
+@description('Whether the deployment is running on GitHub Actions')
+param runningOnGh string = ''
+
+@description('Id of the user or app to assign application roles')
+param principalId string = ''
 
 @description('Name of the OpenAI resource group. If not specified, the resource group name will be generated.')
 param openAIResourceGroupName string = ''
@@ -401,7 +397,7 @@ module openAI 'core/ai/cognitiveservices.bicep' = if (deployAzureOpenAI) {
   scope: openAIResourceGroup
   params: {
     name: '${prefix}-openai'
-    location: openAILocation
+    location: location
     tags: tags
     sku: {
       name: 'S0'
