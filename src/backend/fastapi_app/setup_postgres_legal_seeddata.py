@@ -128,7 +128,6 @@ async def insert_batch(session: AsyncSession, batch):
 
         await session.execute(query, batch_prepared)
         await session.commit()
-        logger.info(f"{len(batch)} rows inserted and committed in batch.")
     except Exception as e:
         logger.error(f"Batch insert failed: {e}")
         await session.rollback()
@@ -189,8 +188,8 @@ async def ingest_cases_to_graph_from_postgresql(session, app_identity_name):
 
     await session.commit()
 
-    logger.info(f"Inserted {processed_rows} case nodes into the graph from the PostgreSQL `cases` table.")
-    logger.info(f"Skipped {skipped_rows} problematic cases.")
+    logger.info(f"Cases are created successfully in the `case_graph` AGE database.")
+
 
 
 async def create_edges_from_citations(session):
@@ -440,6 +439,7 @@ async def create_plpgsql_functions(session, app_identity_name):
                     cu.data#>>'{name_abbreviation}' AS case_name,
                     cu.data#>>'{decision_date}' AS date,
                     cu.data,
+					description_vector <=> embedding AS vector_score,
                     RANK() OVER (ORDER BY description_vector <=> embedding) AS vector_rank
                 FROM cases_updated cu
                 WHERE (cu.data#>>'{court, id}')::integer IN (9029)
@@ -452,9 +452,12 @@ async def create_plpgsql_functions(session, app_identity_name):
                     vector.date,
                     vector.data,
                     vector.vector_rank,
+					vector.vector_score,
                     msr_graphrag.similarity_score,
-                    COALESCE(1.0 / (60 + msr_graphrag.similarity_score), 0.0) + 
-                    COALESCE(1.0 / (60 + vector.vector_rank), 0.0) AS combined_score
+			        (
+			            (COALESCE(msr_graphrag.similarity_score, 0.0) * 0.3) + 
+			            (COALESCE(vector.vector_score, 0.0) * 0.7)
+			        ) AS combined_score
                 FROM msr_graphrag
                 INNER JOIN vector ON vector.id = msr_graphrag.document_id
                 WHERE msr_graphrag.partition_rank = 1
@@ -463,10 +466,12 @@ async def create_plpgsql_functions(session, app_identity_name):
                 SELECT 
                     combined_scores.*,
                     RANK() OVER (
-                        ORDER BY combined_scores.combined_score DESC
+                        ORDER BY combined_scores.combined_score
                     ) AS graph_rank
                 FROM 
                     combined_scores
+				ORDER BY graph_rank
+				LIMIT 70
             ), 
             json_payload AS (
                 SELECT jsonb_build_object(
@@ -502,15 +507,46 @@ async def create_plpgsql_functions(session, app_identity_name):
                     ranked_combined_scores
                 JOIN 
                     semantic ON ranked_combined_scores.graph_rank = semantic.ordinality
+				ORDER BY semantic.relevance DESC
+            ),
+	        graph_query AS (
+                SELECT * FROM ag_catalog.cypher('case_graph', 
+                    $$ MATCH (s)-[r:REF]->(n) RETURN n.case_id AS case_id, s.case_id AS ref_id $$
+                ) AS (case_id TEXT, ref_id TEXT)
+            ),
+            graph AS (
+                SELECT subquery.id, COUNT(ref_id) AS refs
+                FROM (
+                    SELECT semantic_ranked.id, graph_query.ref_id, c2.description_vector <=> embedding AS ref_cosine
+                    FROM semantic_ranked
+                    LEFT JOIN graph_query
+                    ON semantic_ranked.id = graph_query.case_id
+                    LEFT JOIN cases_updated c2
+                    ON c2.id = graph_query.ref_id
+                    WHERE semantic_ranked.semantic_rank <= 25
+                    ORDER BY ref_cosine
+                    LIMIT 200
+                ) AS subquery
+                GROUP BY subquery.id
+            ),
+            graph2 AS (
+                SELECT semantic_ranked.*, graph.refs 
+                FROM semantic_ranked
+                LEFT JOIN graph ON semantic_ranked.id = graph.id
+            ),
+            graph_ranked AS (
+                SELECT RANK() OVER (ORDER BY COALESCE(graph2.refs, 0) DESC) AS g_rank, graph2.*
+                FROM graph2
+                ORDER BY g_rank DESC
             ),
             rrf AS (
                 SELECT
                     gold_dataset.label,
-                    COALESCE(1.0 / (60 + semantic_ranked.graph_rank), 0.0) +
-                    COALESCE(1.0 / (60 + semantic_ranked.semantic_rank), 0.0) AS score,
-                    semantic_ranked.*
-                FROM semantic_ranked
-                LEFT JOIN gold_dataset ON semantic_ranked.id = gold_dataset.gold_id
+					COALESCE(1.0 / (70 + graph_ranked.g_rank), 0.0) +
+                    COALESCE(1.0 / (70 + graph_ranked.semantic_rank), 0.0) AS score,
+                    graph_ranked.*
+                FROM graph_ranked
+                LEFT JOIN gold_dataset ON graph_ranked.id = gold_dataset.gold_id
             )
             SELECT 
                 rrf.label, rrf.score, rrf.graph_rank, rrf.semantic_rank, rrf.vector_rank, rrf.id, rrf.case_name, rrf.date, rrf.data, rrf.relevance

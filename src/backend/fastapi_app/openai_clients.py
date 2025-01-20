@@ -62,7 +62,7 @@ async def create_openai_embed_client(
     openai_embed_client: openai.AsyncAzureOpenAI | openai.AsyncOpenAI
     OPENAI_EMBED_HOST = os.getenv("OPENAI_EMBED_HOST")
     if OPENAI_EMBED_HOST == "azure":
-        api_version = os.environ["AZURE_OPENAI_VERSION"]
+        api_version = "2023-05-15"
         azure_endpoint = os.environ["AZURE_OPENAI_ENDPOINT"]
         azure_deployment = os.environ["AZURE_OPENAI_EMBED_DEPLOYMENT"]
         if api_key := os.getenv("AZURE_OPENAI_KEY"):
@@ -78,14 +78,10 @@ async def create_openai_embed_client(
                 api_key=api_key,
             )
         else:
-            logger.info(
-                "Setting up Azure OpenAI client for embeddings using Azure Identity, endpoint %s, deployment %s",
-                azure_endpoint,
-                azure_deployment,
-            )
             token_provider = azure.identity.get_bearer_token_provider(
                 azure_credential, "https://cognitiveservices.azure.com/.default"
             )
+
             openai_embed_client = openai.AsyncAzureOpenAI(
                 api_version=api_version,
                 azure_endpoint=azure_endpoint,

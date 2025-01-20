@@ -67,7 +67,6 @@ The steps below guides you to deploy the Azure services necessary for this solut
     AZURE_ML_SCORING_ENDPOINT={YOUR-AZURE-ML-ENDPOINT}
     AZURE_ML_ENDPOINT_KEY={YOUR-AZURE-ML-ENDPOINT-KEY}
     ```
-    - Provide other AZURE_OPENAI related keys as well in your .env file.
 4. Login to your Azure account
     ```bash
     azd auth login
@@ -78,6 +77,7 @@ The steps below guides you to deploy the Azure services necessary for this solut
     ```
     - Enter a name that will be used for the resource group.    
     - This will provision Azure resources and deploy this sample to those resources, including Azure Database for PostgreSQL Flexible Server, Azure OpenAI service, and Azure Container App Service.
+
 
 ### Deployment Steps For using Windows (pwsh)
 
@@ -101,6 +101,25 @@ pip install -r requirements-dev.txt
 pip install -e src/backend
 ```
 After completing the above steps, you need to follow the steps provided in [Deployment Steps For using Posix (sh)](#deployment-steps-for-using-posix-sh) above.
+
+## Troubleshooting
+
+### Common Issues and Resolutions
+
+1. **Errors During Deployment (`azd up`)**
+   If you encounter any errors during the deployment process, run `azd down` to clean up the resources and address the issue. Once resolved, you can run `azd up` again to retry the deployment.
+
+2. **Missing URLs or Configuration**
+   If you lose track of the deployment URLs or configuration, you can use the `azd show` command to display the existing URLs and other deployment details.
+
+3. **Checking Region Capacity**
+   Before running `azd up`, ensure that your target region has the desired available capacity for your deployment. You can refer to the `main.parameters.json` file to check the capacity needed for Chat, Eval, and Embedding generations. By default, ensure the following minimum capacities or you can try to modify these parameters in the `main.parameters.json` file accordingly if you do not have enough available capacity in your Azure subscription.
+     - **GPT-4o:** 30K - AZURE_OPENAI_CHAT_DEPLOYMENT_CAPACITY
+     - **GPT-4:** 80K - AZURE_OPENAI_EVAL_DEPLOYMENT_CAPACITY
+     - **text-embedding-3-small:** 120K - AZURE_OPENAI_EMBED_DEPLOYMENT_CAPACITY
+
+4. **Azure Subscription Permissions**
+   Ensure that you have the appropriate permissions in your Azure subscription. You should be the **subscription owner** or have equivalent permissions to successfully deploy resources and enable required features.
 
 ## Contributing
 

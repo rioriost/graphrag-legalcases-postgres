@@ -90,7 +90,7 @@ async def get_azure_credential() -> (
             azure_credential = azure.identity.ManagedIdentityCredential(client_id=client_id)
         else:
             if tenant_id := os.getenv("AZURE_TENANT_ID"):
-                logger.info("Authenticating to Azure using Azure Developer CLI Credential for tenant %s", tenant_id)
+                # logger.info("Authenticating to Azure using Azure Developer CLI Credential for tenant %s", tenant_id)
                 azure_credential = azure.identity.AzureDeveloperCliCredential(tenant_id=tenant_id, process_timeout=60)
             else:
                 logger.info("Authenticating to Azure using Azure Developer CLI Credential")

@@ -29,7 +29,6 @@ async def insert_batch(session: AsyncSession, batch, table_name, query):
     try:
         await session.execute(query, batch)
         await session.commit()
-        logger.info(f"{len(batch)} rows inserted into {table_name} and committed in batch.")
     except Exception as e:
         logger.error(f"Batch insert failed for table {table_name}: {e}")
         await session.rollback()
@@ -251,11 +250,11 @@ async def initialize_final_community_reports_table(engine: AsyncEngine):
     query = text("""
         INSERT INTO final_community_reports (
             id, human_readable_id, community, level, title, summary, full_content,
-            rank, rank_explanation, findings, full_content_json, period, size
+            rank, rank_explanation, findings, full_content_json, period, size, full_content_vector
         )
         VALUES (
             :id, :human_readable_id, :community, :level, :title, :summary, :full_content,
-            :rank, :rank_explanation, :findings, :full_content_json, :period, :size
+            :rank, :rank_explanation, :findings, :full_content_json, :period, :size, :full_content_vector
         )
         ON CONFLICT (id) DO NOTHING
     """)
@@ -276,6 +275,7 @@ async def initialize_final_community_reports_table(engine: AsyncEngine):
                 "full_content_json": row["full_content_json"],
                 "period": row["period"],
                 "size": row["size"],
+                "full_content_vector": row["full_content_vector"],
             }
         except (KeyError, ValueError, json.JSONDecodeError) as e:
             logger.error(f"Error processing row {row['id'] if 'id' in row else 'unknown'}: {e}")
@@ -370,6 +370,13 @@ async def main():
     parser.add_argument("--password", type=str, help="Postgres password")
     parser.add_argument("--database", type=str, help="Postgres database")
     parser.add_argument("--sslmode", type=str, help="Postgres SSL mode")
+    parser.add_argument(
+    "--run-post-indexing", 
+    type=str, 
+    choices=["true", "false"], 
+    default="false", 
+    help="Run post-indexing steps: 'true' to generate embeddings and create HNSW index, 'false' to skip"
+    )
 
     args = parser.parse_args()
 
@@ -382,8 +389,12 @@ async def main():
     await initialize_final_text_units_table(engine)
     await initialize_final_communities_table(engine)
     await initialize_final_community_reports_table(engine)
-    await generate_and_update_embeddings(engine)
+
+    if args.run_post_indexing == "true":
+        await generate_and_update_embeddings(engine)
+    
     await create_hnsw_index(engine)
+
     await engine.dispose()
 
 
