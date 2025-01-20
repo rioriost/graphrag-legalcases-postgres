@@ -371,11 +371,11 @@ async def main():
     parser.add_argument("--database", type=str, help="Postgres database")
     parser.add_argument("--sslmode", type=str, help="Postgres SSL mode")
     parser.add_argument(
-    "--run-post-indexing", 
+    "--run-post-embedding", 
     type=str, 
     choices=["true", "false"], 
     default="false", 
-    help="Run post-indexing steps: 'true' to generate embeddings and create HNSW index, 'false' to skip"
+    help="Run post embedding steps: 'true' to generate embeddings, 'false' to skip"
     )
 
     args = parser.parse_args()
@@ -390,7 +390,7 @@ async def main():
     await initialize_final_communities_table(engine)
     await initialize_final_community_reports_table(engine)
 
-    if args.run_post_indexing == "true":
+    if args.run_post_embedding == "true":
         await generate_and_update_embeddings(engine)
     
     await create_hnsw_index(engine)

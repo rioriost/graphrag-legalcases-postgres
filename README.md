@@ -121,6 +121,124 @@ After completing the above steps, you need to follow the steps provided in [Depl
 4. **Azure Subscription Permissions**
    Ensure that you have the appropriate permissions in your Azure subscription. You should be the **subscription owner** or have equivalent permissions to successfully deploy resources and enable required features.
 
+### MSR GraphRAG Integration (optional)
+
+
+You can run the default integration with MSR GraphRAG data by selecting the corresponding option from the frontend. However, if you want to use Microsoft's GraphRAG integration alongside our RRF graph solution, follow the steps below to initialize, auto-tune, and index the `graphrag` folder for your data.
+
+
+### 1. Create the Necessary Folder Structure
+Run the following command to create the required folder structure:
+```
+mkdir -p ./graphrag/input
+```
+Place your CSV file into the `./graphrag/input` folder.
+
+
+### 2. Install Dependencies
+Activate the Poetry environment by running:
+```
+poetry shell  
+poetry install
+```
+This will install the necessary dependencies to use the `graphrag` command.
+
+
+### 3. Initialize the Folder
+Initialize the folder with the following command:
+```
+graphrag init --root ./graphrag
+```
+This will create the required files for the process.
+
+
+### 4. Configure API Keys and Settings
+- Provide your `GRAPHRAG_API_KEY` in the `.env` file, depending on the OpenAI model type you are using.
+- Update the `settings.yaml` file with the following configuration with your data columns instead:
+
+
+```
+input:  
+  type: file  # or 'blob'  
+  file_type: csv  # or 'text'  
+  base_dir: "input"  
+  file_encoding: utf-8  
+  file_pattern: ".*\\.csv$"  
+  source_column: id  
+  text_column: description  
+  title_column: name  
+  document_attribute_columns:  
+    - court_id  
+    - court_name
+```
+
+- Update the `settings.yaml` file with the following model configuration for your Azure OpenAI.
+
+```
+llm:
+  api_key: ${GRAPHRAG_API_KEY}
+  type: azure_openai_chat
+  model: gpt-4o-mini
+  model_supports_json: true
+  api_base: https://<your-azure-openai>.openai.azure.com
+  api_version: <your-azure-openai-4o-mini-version>
+  deployment_name: gpt-4o-mini
+```
+
+```
+embeddings:
+  async_mode: threaded # or asyncio
+  vector_store:
+    type: lancedb
+    db_uri: 'output/lancedb'
+    container_name: default
+    overwrite: true
+  llm:
+    api_key: ${GRAPHRAG_API_KEY}
+    type: azure_openai_embedding
+    model: text-embedding-3-small
+    api_base: https://<your-azure-openai>.openai.azure.com
+    api_version: <your-azure-openai-text-embedding-3-small-version>
+    deployment_name: text-embedding-3-small
+```
+
+### 5. Run Auto-Tuning for Prompts
+Auto-tune your prompts according to your data by running:
+```
+python -m graphrag prompt-tune --root ./graphrag/ --config ./graphrag/settings.yaml --no-discover-entity-types --output ./graphrag/prompts/
+```
+
+### 6. Run the Indexing Process
+Begin the indexing process for your knowledge graph with:
+```
+graphrag index --root ./graphrag
+```
+This process may take about an hour to complete, depending on your rate limits.
+
+
+### 7. Convert Parquet Files to CSV
+After indexing, use the `notebook.ipynb` file to convert the following Parquet files to CSV under the `data` folder:
+- `final_documents`
+- `final_text_units`
+- `final_communities`
+- `final_community_reports`
+You can also generate embeddings of `full_content` field of the `final_community_reports` to a new column called `full_content_vector` manually in your `final_community_reports.csv` file. 
+
+
+### 8. Deploy Your Project
+You need to select the option (true or false) to generate embeddings during post-provisioning or not by configuring RUN_POST_EMBEDDING parameter in the `scripts/setup_postgres_seeddata.sh` file depending on your csv file already contains the embeddings or not in the previous step.  Run the deployment command to finalize the process:
+```
+azd up
+```
+Follow the instructions provided in the earlier steps to complete the deployment.
+
+
+## Notes
+- Ensure all necessary configurations in `.env` and `settings.yaml` are accurate.
+- Indexing time may vary based on your system and rate limits.
+- If you encounter any issues, refer to the documentation or reach out for support.
+
+
 ## Contributing
 
 This project welcomes contributions and suggestions. Most contributions require you to agree to a Contributor License Agreement (CLA) declaring that you have the right to, and actually do, grant us the rights to use your contribution. For details, visit https://cla.microsoft.com.

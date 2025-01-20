@@ -9,7 +9,7 @@ APP_IDENTITY_NAME=$(azd env get-value SERVICE_WEB_IDENTITY_NAME)
 
 . ./scripts/load_python_env.sh
 
-RUN_POST_INDEXING=false
+RUN_POST_EMBEDDING=false
 
 .venv/bin/python ./src/backend/fastapi_app/setup_postgres_legal_seeddata.py --host $POSTGRES_HOST --username $POSTGRES_USERNAME --database $POSTGRES_DATABASE  --app-identity-name $APP_IDENTITY_NAME
-.venv/bin/python ./src/backend/fastapi_app/setup_postgres_legal_seeddata_msrgraphrag.py --host $POSTGRES_HOST --username $POSTGRES_USERNAME --database $POSTGRES_DATABASE --run-post-indexing $RUN_POST_INDEXING
+.venv/bin/python ./src/backend/fastapi_app/setup_postgres_legal_seeddata_msrgraphrag.py --host $POSTGRES_HOST --username $POSTGRES_USERNAME --database $POSTGRES_DATABASE --run-post-embedding $RUN_POST_EMBEDDING
