@@ -1,3 +1,4 @@
+import re
 from collections.abc import AsyncGenerator
 
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AsyncStream
@@ -169,10 +170,20 @@ class SimpleRAGChat(RAGChatBase):
                 ],
             ),
         )
+        
+        def sanitize_markdown_bold(text: str) -> str:
+            text = re.sub(r'(?<=\s)\*\*', '<strong>', text)
+            text = re.sub(r'\*\*(?=\s|$)', '</strong>', text)
+            return text
+
         async for response_chunk in chat_completion_async_stream:
-            # first response has empty choices and last response has empty content
             if response_chunk.choices and response_chunk.choices[0].delta.content:
+                raw_content = str(response_chunk.choices[0].delta.content)
+
+                cleaned_content = sanitize_markdown_bold(raw_content)
+
                 yield RetrievalResponseDelta(
-                    delta=Message(content=str(response_chunk.choices[0].delta.content), role=AIChatRoles.ASSISTANT)
+                    delta=Message(content=cleaned_content, role=AIChatRoles.ASSISTANT)
                 )
         return
+
