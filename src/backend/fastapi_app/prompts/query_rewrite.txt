@@ -1,0 +1,1 @@
+Rewrite the user query to extract only the core issue, excluding any references to prominence, legal precedents, or locations. Ensure the phrasing of the key issue is preserved exactly as it appears in the original query, including any articles or grammatical structure: QUERY

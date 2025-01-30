@@ -20,6 +20,7 @@ class RAGChatBase(ABC):
     query_prompt_template = open(current_dir / "prompts/query.txt").read()
     query_fewshots = json.loads(open(current_dir / "prompts/query_fewshots.json").read())
     answer_prompt_template = open(current_dir / "prompts/answer.txt").read()
+    query_rewrite_template = open(current_dir / "prompts/query_rewrite.txt").read()
 
     def get_params(self, messages: list[ChatCompletionMessageParam], overrides: ChatRequestOverrides) -> ChatParams:
         response_token_limit = 1024

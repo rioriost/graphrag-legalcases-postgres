@@ -19,7 +19,7 @@ const Chat = () => {
     const [isConfigPanelOpen, setIsConfigPanelOpen] = useState(false);
     const [promptTemplate, setPromptTemplate] = useState<string>("");
     const [temperature, setTemperature] = useState<number>(0.3);
-    const [retrieveCount, setRetrieveCount] = useState<number>(3);
+    const [retrieveCount, setRetrieveCount] = useState<number>(10);
     const [retrievalMode, setRetrievalMode] = useState<PAIDRetrievalMode>(PAIDRetrievalMode.Vector);
     const [useAdvancedFlow, setUseAdvancedFlow] = useState<boolean>(true);
     const [shouldStream, setShouldStream] = useState<boolean>(true);

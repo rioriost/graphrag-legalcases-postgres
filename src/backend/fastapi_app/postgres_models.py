@@ -106,9 +106,9 @@ class Case(Base):
         ]
         data_fields.append(f"casebody_opinion_text:{truncated_text}")
 
-        # Join the fields into a single string
+        page_rank = self.data.get("analysis", {}).get("pagerank", [{}]).get("percentile", "")
         data_str = " ".join(data_fields)
-        return f"ID: {self.id} Data: {data_str}"
+        return f"Pagerank: {page_rank} Data: {data_str}"
 
     def to_str_for_embedding(self):
         """

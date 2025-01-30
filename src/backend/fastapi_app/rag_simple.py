@@ -37,10 +37,26 @@ class SimpleRAGChat(RAGChatBase):
     ) -> tuple[list[ChatCompletionMessageParam], list[Case], list[ThoughtStep]]:
         """Retrieve relevant rows from the database and build a context for the chat model."""
 
+        query_messages: list[ChatCompletionMessageParam] = build_messages(
+            model=self.chat_model,
+            system_prompt=self.query_rewrite_template,   
+            max_tokens=self.chat_token_limit,
+            new_user_content="QUERY:\n" + chat_params.original_user_query,
+        )
+
+        chat_completion: ChatCompletion = await self.openai_chat_client.chat.completions.create(
+            messages=query_messages,
+            model=self.chat_deployment if self.chat_deployment else self.chat_model,
+            temperature=0.0,
+            max_tokens=500,
+        )
+
+        new_user_query = chat_completion.choices[0].message.content
+
         # Retrieve relevant rows from the database
         results = await self.searcher.search_and_embed(
             retrieval_mode=chat_params.retrieval_mode,
-            query_text=chat_params.original_user_query,
+            query_text=new_user_query,
             top=chat_params.top,
             enable_vector_search=chat_params.enable_vector_search,
             enable_text_search=chat_params.enable_text_search,
@@ -56,7 +72,7 @@ class SimpleRAGChat(RAGChatBase):
         contextual_messages: list[ChatCompletionMessageParam] = build_messages(
             model=self.chat_model,
             system_prompt=chat_params.prompt_template,
-            new_user_content=chat_params.original_user_query + "\n\nSources:\n" + content,
+            new_user_content="QUESTION:\n" + new_user_query + "\n\nCONTEXT:\n" + content,
             past_messages=chat_params.past_messages,
             max_tokens=self.chat_token_limit - chat_params.response_token_limit,
             fallback_to_default=True,
@@ -65,7 +81,7 @@ class SimpleRAGChat(RAGChatBase):
         thoughts = [
             ThoughtStep(
                 title="Search query for database",
-                description=chat_params.original_user_query,
+                description=new_user_query,
                 props={
                     "top": chat_params.top,
                     "vector_search": chat_params.enable_vector_search,

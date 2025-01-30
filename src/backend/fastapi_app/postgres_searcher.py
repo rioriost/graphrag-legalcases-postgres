@@ -90,7 +90,7 @@ class PostgresSearcher:
                 await self.db_session.execute(
                     sql,
                     {
-                        "query_text": "Water leaking into the apartment from the floor above.",
+                        "query_text": query_text,
                         "embedding": to_db(query_vector),
                         "top_n": top,
                     },
@@ -132,7 +132,7 @@ class PostgresSearcher:
                         "embedding": to_db(query_vector),
                         "top_n": top,
                         "consider_n": 60,
-                        "query_text": "Water leaking into the apartment from the floor above.",
+                        "query_text": query_text,
                     },
                 )
             ).fetchall()
@@ -171,7 +171,7 @@ class PostgresSearcher:
             self.embed_deployment,
             self.embed_dimensions,
         )
-        if not enable_text_search:
-            query_text = None
+        # if not enable_text_search:
+        #     query_text = None
 
         return await self.search(query_text, vector, top, filters, retrieval_mode)
