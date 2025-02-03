@@ -124,7 +124,7 @@ After completing the above steps, you need to follow the steps provided in [Depl
 ### MSR GraphRAG Integration (optional)
 
 
-You can run the default integration with MSR GraphRAG data by selecting the corresponding option from the frontend. However, if you want to use Microsoft's GraphRAG integration alongside our RRF graph solution, follow the steps below to initialize, auto-tune, and index the `graphrag` folder for your data.
+You can run the default integration with MSR GraphRAG data by selecting the corresponding option from the frontend. However, if you want to run entire Microsoft's GraphRAG integration alongside our RRF graph solution, follow the steps below to initialize, auto-tune, and index the `graphrag` folder for your data. The output of these GraphRAG steps is already available in the data folder. However, if you prefer to run the library yourself, follow the steps below. If you’d rather use the provided CSV files directly, you can skip ahead to step 8.
 
 
 ### 1. Create the Necessary Folder Structure
@@ -132,8 +132,63 @@ Run the following command to create the required folder structure:
 ```
 mkdir -p ./graphrag/input
 ```
-Place your CSV file into the `./graphrag/input` folder.
 
+Before running the GraphRAG library, you need to prepare and place the input CSV file into the `./graphrag/input` folder. You will need to create the input CSV file in the following steps.
+
+### 2. Extracting Relevant Data from the Original Table
+The original case table contains multiple columns, including:
+
+- `id` – Unique identifier for each case.
+- `data` – A large JSON object containing detailed case information.
+- `description_vector` – A 1536-dimensional vector used for vector search.
+
+However, not all json fields from `data` are required for GraphRAG processing. To simplify the dataset, we will create a filtered table (`cases_filtered`) that retains only the necessary columns while excluding the `description_vector` and create a csv file from it in the next step.
+
+```sql
+CREATE TABLE cases_filtered (
+    id TEXT,
+    name TEXT,
+    court_id TEXT,
+    court_name TEXT,
+    description TEXT
+);
+
+
+INSERT INTO cases_filtered (id, name, court_id, court_name, description)
+SELECT 
+    id,
+    data->>'name' AS name,
+    (data->'court'->>'id') AS court_id,
+    data->'court'->>'name' AS court_name,
+    data->'casebody'->'opinions'->0->>'text' AS description
+FROM cases_updated;
+```
+
+Please note that original case table is already provided in data folder as `cases_final.csv` after `azd up` command, you will obtain it in a table format named `cases_updated`.
+
+### 3. Exporting Data to CSV
+To generate the required CSV file, run the following SQL command inside your PostgreSQL database:
+
+```sql
+COPY (
+    SELECT id, name, court_id, court_name, description 
+    FROM demo_cases_filtered
+) TO '/home/postgres/cases_filtered_final.csv' 
+WITH CSV HEADER;
+```
+
+This command extracts the required fields from `demo_cases_filtered` and saves them as `cases_filtered_final.csv` inside the PostgreSQL container.
+
+### 4. Copying the CSV File to the Input Directory
+Next, copy the generated CSV file from the PostgreSQL container to your local input directory:
+
+```bash
+docker cp <container-name>:/home/postgres/cases_filtered_final.csv /<your-path>/graphrag/input/cases_filtered_final.csv
+```
+
+Replace `<container-name>` with the actual name of your running PostgreSQL container and `<your-path>` with the local directory path where the GraphRAG input folder is located.
+
+Ensure that the file `cases_filtered_final.csv` is correctly placed inside `./graphrag/input/` before running the GraphRAG library.
 
 ### 2. Install Dependencies
 Activate the Poetry environment by running:
