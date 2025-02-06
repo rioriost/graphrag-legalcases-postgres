@@ -404,11 +404,10 @@ async def create_plpgsql_functions(session, app_identity_name):
             score            NUMERIC,
             graph_rank       BIGINT,
             semantic_rank    BIGINT,
-            vector_rank      BIGINT,
+            msr_rank      BIGINT,
             id               TEXT,
             case_name        TEXT,
-            date             TEXT,
-            data             JSONB,
+            data             TEXT,
             relevance        DOUBLE PRECISION
         ) AS $_$
         BEGIN
@@ -416,143 +415,139 @@ async def create_plpgsql_functions(session, app_identity_name):
 
             RETURN QUERY
             WITH msr_graphrag as (SELECT 
-                fcr.full_content_vector <=> embedding AS similarity_score,
-                ROW_NUMBER() OVER (
-                    PARTITION BY ftd.id
-                    ORDER BY fcr.full_content_vector <=> embedding ASC
-                ) AS partition_rank,
-                fcr.id AS report_id,
-                ftd.id AS document_id,
-                ftd.title AS document_title
-            FROM 
-                final_community_reports fcr
-            JOIN 
-                final_communities fc ON fcr.community = fc.community
-            JOIN 
-                final_text_units ftu ON ftu.id = ANY(fc.text_unit_ids)
-            JOIN 
-                final_documents ftd ON ftd.id = ANY(ftu.document_ids)
-            WHERE fcr.level = 2
-            ),
-            vector AS (
-                SELECT cu.id,
-                    cu.data#>>'{name_abbreviation}' AS case_name,
-                    cu.data#>>'{decision_date}' AS date,
-                    cu.data,
-					description_vector <=> embedding AS vector_score,
-                    RANK() OVER (ORDER BY description_vector <=> embedding) AS vector_rank
-                FROM cases_updated cu
-                WHERE (cu.data#>>'{court, id}')::integer IN (9029)
-                ORDER BY description_vector <=> embedding
-            ),
-            combined_scores AS (
-                SELECT 
-                    vector.id,
-                    vector.case_name,
-                    vector.date,
-                    vector.data,
-                    vector.vector_rank,
-					vector.vector_score,
-                    msr_graphrag.similarity_score,
-			        (
-			            (COALESCE(msr_graphrag.similarity_score, 0.0) * 0.3) + 
-			            (COALESCE(vector.vector_score, 0.0) * 0.7)
-			        ) AS combined_score
-                FROM msr_graphrag
-                INNER JOIN vector ON vector.id = msr_graphrag.document_id
-                WHERE msr_graphrag.partition_rank = 1
-            ), 
-            ranked_combined_scores AS (
-                SELECT 
-                    combined_scores.*,
-                    RANK() OVER (
-                        ORDER BY combined_scores.combined_score
-                    ) AS graph_rank
-                FROM 
-                    combined_scores
-				ORDER BY graph_rank
-				LIMIT 70
-            ), 
-            json_payload AS (
-                SELECT jsonb_build_object(
-                        'pairs', 
-                        jsonb_agg(
-                            jsonb_build_array(
-                                query_text,
-                                LEFT(ranked_combined_scores.data -> 'casebody' -> 'opinions' -> 0 ->> 'text', 800)
-                            )
-                        )
-                    ) AS json_pairs
-                    FROM ranked_combined_scores
-            ),
-            semantic AS (
-                SELECT 
-                    elem.relevance::DOUBLE PRECISION AS relevance,
-                    elem.ordinality
-                FROM 
-                    json_payload AS jp,
-                    LATERAL jsonb_array_elements(
-                        azure_ml.invoke(
-                            jp.json_pairs,
-                            deployment_name => 'bge-v2-m3-1',
-                            timeout_ms => 180000
-                        )
-                    ) WITH ORDINALITY AS elem(relevance)
-            ),
-            semantic_ranked AS (
-                SELECT 
-                    RANK() OVER (ORDER BY semantic.relevance DESC) AS semantic_rank,
-                    semantic.*, ranked_combined_scores.*
-                FROM 
-                    ranked_combined_scores
-                JOIN 
-                    semantic ON ranked_combined_scores.graph_rank = semantic.ordinality
+				ftd.attributes,
+				fcr.full_content_vector <=> embedding AS summary_score,
+				ftu.text_vector <=> embedding AS vector_score,
+				ROW_NUMBER() OVER (
+					PARTITION BY ftd.id
+					ORDER BY fcr.full_content_vector <=> embedding ASC
+				) AS partition_rank,
+				fcr.id AS report_id,
+				ftd.id AS document_id,
+				ftd.title AS document_title,
+				ftd.text AS document_text
+			FROM
+				final_community_reports fcr
+			JOIN
+				final_communities fc ON fcr.community = fc.community
+			JOIN
+				final_text_units ftu ON ftu.id = ANY(fc.text_unit_ids)
+			JOIN
+				final_documents ftd ON ftd.id = ANY(ftu.document_ids)
+			WHERE fcr.level = 2 AND (ftd.attributes#>>'{court_id}')::integer IN (9029)
+			),
+			combined_scores AS (
+				SELECT
+					msr_graphrag.document_id as id,
+					RANK() OVER (
+						ORDER BY msr_graphrag.vector_score
+					) AS vector_rank,
+					RANK() OVER (
+						ORDER BY msr_graphrag.summary_score
+					) AS summary_rank,
+					msr_graphrag.vector_score,
+					msr_graphrag.summary_score,
+					(
+						(COALESCE(msr_graphrag.summary_score, 0.0) * 0.5) + 
+						(COALESCE(msr_graphrag.vector_score, 0.0) * 0.5)
+					) AS msr_score,
+					msr_graphrag.document_title as case_name,
+					msr_graphrag.document_text as data
+				FROM msr_graphrag
+				WHERE msr_graphrag.partition_rank = 1
+			),
+			ranked_combined_scores AS (
+			SELECT
+				RANK() OVER (
+					ORDER BY combined_scores.msr_score
+				) AS msr_rank,
+				combined_scores.*
+				FROM
+					combined_scores
+				ORDER BY msr_rank
+				LIMIT 110
+			),
+			json_payload AS (
+				SELECT jsonb_build_object(
+					'pairs',
+						jsonb_agg(
+							jsonb_build_array(
+								query_text,
+								LEFT(ranked_combined_scores.data, 800)
+							)
+						)
+					) AS json_pairs
+				FROM ranked_combined_scores
+			),
+			semantic AS (
+				SELECT
+					elem.relevance::DOUBLE PRECISION AS relevance,
+					elem.ordinality
+				FROM
+					json_payload AS jp,
+					LATERAL jsonb_array_elements(
+						azure_ml.invoke(
+							jp.json_pairs,
+							deployment_name => 'bge-v2-m3-1',
+							timeout_ms => 180000
+					)
+				) WITH ORDINALITY AS elem(relevance)
+			),
+			semantic_ranked AS (
+				SELECT
+					RANK() OVER (ORDER BY semantic.relevance DESC) AS semantic_rank,
+					semantic.*, ranked_combined_scores.*
+				FROM
+					ranked_combined_scores
+				JOIN
+					semantic ON ranked_combined_scores.msr_rank = semantic.ordinality
 				ORDER BY semantic.relevance DESC
-            ),
-	        graph_query AS (
-                SELECT * FROM ag_catalog.cypher('case_graph', 
-                    $$ MATCH (s)-[r:REF]->(n) RETURN n.case_id AS case_id, s.case_id AS ref_id $$
-                ) AS (case_id TEXT, ref_id TEXT)
-            ),
-            graph AS (
-                SELECT subquery.id, COUNT(ref_id) AS refs
-                FROM (
-                    SELECT semantic_ranked.id, graph_query.ref_id, c2.description_vector <=> embedding AS ref_cosine
-                    FROM semantic_ranked
-                    LEFT JOIN graph_query
-                    ON semantic_ranked.id = graph_query.case_id
-                    LEFT JOIN cases_updated c2
-                    ON c2.id = graph_query.ref_id
-                    WHERE semantic_ranked.semantic_rank <= 25
-                    ORDER BY ref_cosine
-                    LIMIT 200
-                ) AS subquery
-                GROUP BY subquery.id
-            ),
-            graph2 AS (
-                SELECT semantic_ranked.*, graph.refs 
-                FROM semantic_ranked
-                LEFT JOIN graph ON semantic_ranked.id = graph.id
-            ),
-            graph_ranked AS (
-                SELECT RANK() OVER (ORDER BY COALESCE(graph2.refs, 0) DESC) AS g_rank, graph2.*
-                FROM graph2
-                ORDER BY g_rank DESC
-            ),
-            rrf AS (
-                SELECT
-                    gold_dataset.label,
-					COALESCE(1.0 / (70 + graph_ranked.g_rank), 0.0) +
-                    COALESCE(1.0 / (70 + graph_ranked.semantic_rank), 0.0) AS score,
-                    graph_ranked.*
-                FROM graph_ranked
-                LEFT JOIN gold_dataset ON graph_ranked.id = gold_dataset.gold_id
-            )
-            SELECT 
-                rrf.label, rrf.score, rrf.graph_rank, rrf.semantic_rank, rrf.vector_rank, rrf.id, rrf.case_name, rrf.date, rrf.data, rrf.relevance
-            FROM rrf
-            ORDER BY rrf.score DESC
-            LIMIT top_n;
+			),
+			graph_query AS (
+				SELECT * FROM ag_catalog.cypher('case_graph',
+					$$ MATCH (s)-[r:REF]->(n) RETURN n.case_id AS case_id, s.case_id AS ref_id $$
+				) AS (case_id TEXT, ref_id TEXT)
+			),
+			graph AS (
+				SELECT subquery.id, COUNT(ref_id) AS refs
+				FROM (
+					SELECT semantic_ranked.id, graph_query.ref_id, c2.description_vector <=> embedding AS ref_cosine
+					FROM semantic_ranked
+					LEFT JOIN graph_query
+					ON semantic_ranked.id = graph_query.case_id
+					LEFT JOIN cases_updated c2
+					ON c2.id = graph_query.ref_id
+					WHERE semantic_ranked.semantic_rank <= 39
+					ORDER BY ref_cosine
+					LIMIT 200
+				) AS subquery
+				GROUP BY subquery.id
+			),
+			graph2 AS (
+				SELECT graph.refs, semantic_ranked.*
+				FROM semantic_ranked
+				LEFT JOIN graph ON semantic_ranked.id = graph.id
+			),
+			graph_ranked AS (
+				SELECT RANK() OVER (ORDER BY COALESCE(graph2.refs, 0) DESC) AS graph_rank, graph2.*
+				FROM graph2
+                WHERE refs is not null and refs > 0
+				ORDER BY graph_rank DESC
+			),
+			rrf AS (
+				SELECT
+					gold_dataset.label,
+					COALESCE(1.0 / (20 + graph_ranked.graph_rank), 0.0) +
+					COALESCE(1.0 / (25 + graph_ranked.semantic_rank), 0.0) AS score,
+					graph_ranked.*
+				FROM graph_ranked
+				LEFT JOIN gold_dataset ON graph_ranked.id = gold_dataset.gold_id
+			)
+			SELECT
+				rrf.label, rrf.score, rrf.graph_rank, rrf.semantic_rank, rrf.msr_rank, rrf.id, rrf.case_name, rrf.data, rrf.relevance
+			FROM rrf
+			ORDER BY rrf.score DESC
+			LIMIT top_n;
         END;
         $_$ LANGUAGE plpgsql;
     """)

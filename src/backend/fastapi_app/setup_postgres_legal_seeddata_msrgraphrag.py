@@ -124,8 +124,8 @@ async def initialize_final_text_units_table(engine: AsyncEngine):
     """
     csv_file_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..", "data/final_text_units.csv"))
     query = text("""
-        INSERT INTO final_text_units (id, human_readable_id, text, n_tokens, document_ids, entity_ids, relationship_ids)
-        VALUES (:id, :human_readable_id, :text, :n_tokens, :document_ids, :entity_ids, :relationship_ids)
+        INSERT INTO final_text_units (id, human_readable_id, text, n_tokens, document_ids, entity_ids, relationship_ids, text_vector)
+        VALUES (:id, :human_readable_id, :text, :n_tokens, :document_ids, :entity_ids, :relationship_ids, :text_vector)
         ON CONFLICT (id) DO NOTHING
     """)
 
@@ -142,6 +142,7 @@ async def initialize_final_text_units_table(engine: AsyncEngine):
                 "document_ids": document_ids,
                 "entity_ids": entity_ids,
                 "relationship_ids": relationship_ids,
+                "text_vector": row["text_vector"],
             }
         except Exception as e:
             logger.error(f"Error processing row {row}: {e}")
@@ -159,7 +160,8 @@ async def initialize_final_text_units_table(engine: AsyncEngine):
                 n_tokens INT,
                 document_ids TEXT[],
                 entity_ids TEXT[],
-                relationship_ids TEXT[]
+                relationship_ids TEXT[],
+                text_vector vector(1536)
             );
         """,
         )
@@ -348,6 +350,68 @@ async def generate_and_update_embeddings(engine: AsyncEngine):
             await session.commit()
 
 
+
+async def generate_and_update_embeddings_ftu(engine: AsyncEngine):
+    """
+    Generate embeddings for `text` and update the `text_vector` column.
+    """
+    update_query = text("""
+        UPDATE final_text_units
+        SET text_vector = :vector
+        WHERE id = :id
+    """)
+
+    select_query = text("""
+        SELECT id, text
+        FROM final_text_units
+        WHERE text_vector IS NULL
+    """)
+
+    def addapt_vector(nparray):
+        """Adapt a numpy array to the PostgreSQL VECTOR type."""
+        vector_str = ",".join(map(str, nparray.tolist()))
+        return AsIs(f"'[{vector_str}]'::VECTOR")
+
+    def adapt_vector(nparray):
+        """Adapt a numpy array to the PostgreSQL VECTOR type."""
+        return f"[{','.join(map(str, nparray.tolist()))}]"
+
+    register_adapter(np.ndarray, addapt_vector)
+
+    async with AsyncSession(engine) as session:
+        async with session.begin():
+            print("Generating embeddings and updating the database...")
+            result = await session.execute(select_query)
+            rows = result.fetchall()
+
+            print(f"Found {len(rows)} rows to process.")
+
+            for row in rows:
+                try:
+                    # Generate embeddings for `full_content`
+                    azure_credential = await get_azure_credential()
+                    openai_embed_client = await create_openai_embed_client(azure_credential)
+
+                    embedding = await compute_text_embedding(
+                        row[1],
+                        openai_client=openai_embed_client,
+                        embed_model="text-embedding-3-small",
+                        embed_deployment="text-embedding-3-small",
+                        embedding_dimensions=1536,
+                    )
+
+                    fcv = np.array(embedding)
+                    if fcv is not None:
+                        # Update the `text_vector` column
+                        vector_str = adapt_vector(fcv)
+                        await session.execute(
+                            update_query,
+                            {"vector": vector_str, "id": row[0]},
+                        )
+                except Exception as e:
+                    logger.error(f"Error generating embeddings for row ID {row[0]}: {e}")
+            await session.commit()
+
 async def create_hnsw_index(engine: AsyncEngine):
     """
     Create the HNSW index on the `full_content_vector` column.
@@ -361,6 +425,21 @@ async def create_hnsw_index(engine: AsyncEngine):
             await session.execute(create_index_query)
             await session.commit()
             logger.info("HNSW index on `full_content_vector` created successfully.")
+
+
+async def create_hnsw_index_ftu(engine: AsyncEngine):
+    """
+    Create the HNSW index on the `text_vector` column.
+    """
+    async with AsyncSession(engine) as session:
+        async with session.begin():
+            create_index_query = text("""
+                CREATE INDEX IF NOT EXISTS idx_text_vector ON final_text_units
+                USING hnsw (text_vector vector_cosine_ops);
+            """)
+            await session.execute(create_index_query)
+            await session.commit()
+            logger.info("HNSW index on `text_vector` created successfully.")
 
 
 async def main():
@@ -392,8 +471,10 @@ async def main():
 
     if args.run_post_embedding == "true":
         await generate_and_update_embeddings(engine)
+        await generate_and_update_embeddings_ftu(engine)
     
     await create_hnsw_index(engine)
+    await create_hnsw_index_ftu(engine)
 
     await engine.dispose()
 
