@@ -42,7 +42,7 @@
         "value": "${AZURE_OPENAI_CHAT_DEPLOYMENT_SKU=GlobalStandard}"
       },
       "chatDeploymentCapacity":{
-        "value": "${AZURE_OPENAI_CHAT_DEPLOYMENT_CAPACITY=8}"
+        "value": "${AZURE_OPENAI_CHAT_DEPLOYMENT_CAPACITY=120}"
       },
       "deployEvalModel": {
         "value": "${DEPLOY_EVAL_MODEL=false}"

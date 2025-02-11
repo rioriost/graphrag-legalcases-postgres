@@ -1,4 +1,3 @@
-import re
 from collections.abc import AsyncGenerator
 
 from openai import AsyncAzureOpenAI, AsyncOpenAI, AsyncStream
@@ -16,6 +15,62 @@ from fastapi_app.api_models import (
 from fastapi_app.postgres_models import Case
 from fastapi_app.postgres_searcher import PostgresSearcher
 from fastapi_app.rag_base import ChatParams, RAGChatBase
+
+class MarkdownProcessor:
+    def __init__(self):
+        self.buffer = ""  # Stores the leftover incomplete text
+
+    async def replace_markdown_bold(self, text):
+        """
+        Processes text chunks and replaces markdown bold markers (`**`).
+        Ensures correct formatting for numbered lists, bullet points, and bold text.
+        """
+        self.buffer += text
+
+        lines = self.buffer.split("\n")  
+        processed_lines = []
+        new_buffer = ""
+
+        for i, line in enumerate(lines):
+            stripped_line = line.strip()
+
+            if i == len(lines) - 1 and not stripped_line.endswith((".", ":", "!", "?")):
+                new_buffer = stripped_line
+                continue
+
+            new_line = stripped_line
+
+            if any(char.isdigit() for char in stripped_line):
+                new_line = "\n<strong>" + stripped_line + "</strong> "
+
+            elif stripped_line.startswith("- **"):
+                new_line = "\n" + stripped_line.replace("- **", "- ")
+
+            elif stripped_line.startswith("- "):
+                new_line = "\n" + stripped_line
+
+            elif stripped_line.count("**") == 2 and "**:" in stripped_line:
+                parts = stripped_line.split("**")
+                new_line = ""
+                inside_bold = False
+                for part in parts:
+                    if inside_bold:
+                        new_line += f"<strong>{part}</strong>"
+                    else:
+                        new_line += part
+                        inside_bold = not inside_bold
+
+            elif stripped_line.count("**") == 1 and "**:" in stripped_line:
+                parts = stripped_line.split("**")
+                new_line = ""
+                for part in parts:
+                    new_line += part
+
+            processed_lines.append(new_line)
+
+        self.buffer = new_buffer
+        return "\n".join(processed_lines)
+
 
 
 class SimpleRAGChat(RAGChatBase):
@@ -168,19 +223,17 @@ class SimpleRAGChat(RAGChatBase):
                         ),
                     ),
                 ],
-            ),
+            ),  
         )
         
-        def sanitize_markdown_bold(text: str) -> str:
-            text = re.sub(r'(?<=\s)\*\*', '<strong>', text)
-            text = re.sub(r'\*\*(?=\s|$)', '</strong>', text)
-            return text
 
+        processor = MarkdownProcessor()
+        
         async for response_chunk in chat_completion_async_stream:
             if response_chunk.choices and response_chunk.choices[0].delta.content:
                 raw_content = str(response_chunk.choices[0].delta.content)
 
-                cleaned_content = sanitize_markdown_bold(raw_content)
+                cleaned_content = await processor.replace_markdown_bold(raw_content)
 
                 yield RetrievalResponseDelta(
                     delta=Message(content=cleaned_content, role=AIChatRoles.ASSISTANT)

@@ -420,8 +420,10 @@ async def create_plpgsql_functions(session, app_identity_name):
 				ftu.text_vector <=> embedding AS vector_score,
 				ROW_NUMBER() OVER (
 					PARTITION BY ftd.id
-					ORDER BY fcr.full_content_vector <=> embedding ASC
-				) AS partition_rank,
+					ORDER BY 
+						(COALESCE(fcr.full_content_vector <=> embedding, 0.0) * 0.4) + 
+						(COALESCE(ftu.text_vector <=> embedding, 0.0) * 0.6) ASC
+				) AS partition_num,
 				fcr.id AS report_id,
 				ftd.id AS document_id,
 				ftd.title AS document_title,
@@ -448,13 +450,13 @@ async def create_plpgsql_functions(session, app_identity_name):
 					msr_graphrag.vector_score,
 					msr_graphrag.summary_score,
 					(
-						(COALESCE(msr_graphrag.summary_score, 0.0) * 0.5) + 
-						(COALESCE(msr_graphrag.vector_score, 0.0) * 0.5)
+						(COALESCE(msr_graphrag.summary_score, 0.0) * 0.4) + 
+						(COALESCE(msr_graphrag.vector_score, 0.0) * 0.6)
 					) AS msr_score,
 					msr_graphrag.document_title as case_name,
 					msr_graphrag.document_text as data
 				FROM msr_graphrag
-				WHERE msr_graphrag.partition_rank = 1
+				WHERE msr_graphrag.partition_num = 1
 			),
 			ranked_combined_scores AS (
 			SELECT
@@ -465,7 +467,7 @@ async def create_plpgsql_functions(session, app_identity_name):
 				FROM
 					combined_scores
 				ORDER BY msr_rank
-				LIMIT 110
+				LIMIT 103
 			),
 			json_payload AS (
 				SELECT jsonb_build_object(
@@ -537,8 +539,8 @@ async def create_plpgsql_functions(session, app_identity_name):
 			rrf AS (
 				SELECT
 					gold_dataset.label,
-					COALESCE(1.0 / (20 + graph_ranked.graph_rank), 0.0) +
-					COALESCE(1.0 / (25 + graph_ranked.semantic_rank), 0.0) AS score,
+					COALESCE(1.0 / (15 + graph_ranked.graph_rank), 0.0) +
+					COALESCE(1.0 / (20 + graph_ranked.semantic_rank), 0.0) AS score,
 					graph_ranked.*
 				FROM graph_ranked
 				LEFT JOIN gold_dataset ON graph_ranked.id = gold_dataset.gold_id
