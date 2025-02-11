@@ -23,6 +23,7 @@ async def create_db_schema(engine):
         # Load environment variables for Azure ML endpoint settings
         scoring_endpoint = os.getenv("AZURE_ML_SCORING_ENDPOINT")
         endpoint_key = os.getenv("AZURE_ML_ENDPOINT_KEY")
+        deployment_name = os.getenv("AZURE_ML_DEPLOYMENT", "bge-v2-m3-1")
 
         if not scoring_endpoint or not endpoint_key:
             logger.error(
@@ -48,14 +49,14 @@ async def create_db_schema(engine):
                 json_pairs := generate_json_pairs(query, n);
                 result_json := azure_ml.invoke(
                     json_pairs,
-                    deployment_name => 'bge-v2-m3-1',
+                    deployment_name => '{deployment_name}',
                     timeout_ms => 180000
                 );
                 RETURN (
                     SELECT result_json as result
                 );
             END $$ LANGUAGE plpgsql;
-        """)
+        """.format(deployment_name=deployment_name))
         )
 
         await conn.execute(

@@ -269,6 +269,8 @@ async def verify_age_query(session, app_identity_name):
 
 
 async def create_plpgsql_functions(session, app_identity_name):
+    deployment_name = os.getenv("AZURE_ML_DEPLOYMENT", "bge-v2-m3-1")
+
     function_graphrag = text("""
         CREATE OR REPLACE FUNCTION get_vector_semantic_graphrag_optimized(
             query_text TEXT,
@@ -296,12 +298,12 @@ async def create_plpgsql_functions(session, app_identity_name):
             RETURN QUERY
             WITH vector AS (
                 SELECT cases_updated.id,
-                    cases_updated.data#>>'{name_abbreviation}' AS case_name,
-                    cases_updated.data#>>'{decision_date}' AS date,
+                    cases_updated.data#>>'{{name_abbreviation}}' AS case_name,
+                    cases_updated.data#>>'{{decision_date}}' AS date,
                     cases_updated.data,
                     RANK() OVER (ORDER BY description_vector <=> embedding) AS vector_rank
                 FROM cases_updated
-                WHERE (cases_updated.data#>>'{court, id}')::integer IN (9029)
+                WHERE (cases_updated.data#>>'{{court, id}}')::integer IN (9029)
                 ORDER BY description_vector <=> embedding
                 LIMIT consider_n
             ),
@@ -323,7 +325,7 @@ async def create_plpgsql_functions(session, app_identity_name):
                     LATERAL jsonb_array_elements(
                         azure_ml.invoke(
                             jp.json_pairs,
-                            deployment_name => 'bge-v2-m3-1',
+                            deployment_name => '{deployment_name}',
                             timeout_ms => 180000
                         )
                     ) WITH ORDINALITY AS elem(relevance)
@@ -388,7 +390,7 @@ async def create_plpgsql_functions(session, app_identity_name):
             LIMIT top_n;
         END;
         $_$ LANGUAGE plpgsql;
-    """)
+    """.format(deployment_name=deployment_name))
     await session.execute(function_graphrag)
     await session.commit()
     logger.info("Function get_vector_semantic_graphrag_optimized defined successfully.")
@@ -436,7 +438,7 @@ async def create_plpgsql_functions(session, app_identity_name):
 				final_text_units ftu ON ftu.id = ANY(fc.text_unit_ids)
 			JOIN
 				final_documents ftd ON ftd.id = ANY(ftu.document_ids)
-			WHERE fcr.level = 2 AND (ftd.attributes#>>'{court_id}')::integer IN (9029)
+			WHERE fcr.level = 2 AND (ftd.attributes#>>'{{court_id}}')::integer IN (9029)
 			),
 			combined_scores AS (
 				SELECT
@@ -490,7 +492,7 @@ async def create_plpgsql_functions(session, app_identity_name):
 					LATERAL jsonb_array_elements(
 						azure_ml.invoke(
 							jp.json_pairs,
-							deployment_name => 'bge-v2-m3-1',
+							deployment_name => '{deployment_name}',
 							timeout_ms => 180000
 					)
 				) WITH ORDINALITY AS elem(relevance)
@@ -552,7 +554,7 @@ async def create_plpgsql_functions(session, app_identity_name):
 			LIMIT top_n;
         END;
         $_$ LANGUAGE plpgsql;
-    """)
+    """.format(deployment_name=deployment_name))
     await session.execute(function_msr_graphrag_combined)
     await session.commit()
     logger.info("Function get_msr_graphrag_combined defined successfully.")

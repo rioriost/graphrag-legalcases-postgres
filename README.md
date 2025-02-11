@@ -66,6 +66,7 @@ The steps below guides you to deploy the Azure services necessary for this solut
     ```bash
     AZURE_ML_SCORING_ENDPOINT={YOUR-AZURE-ML-ENDPOINT}
     AZURE_ML_ENDPOINT_KEY={YOUR-AZURE-ML-ENDPOINT-KEY}
+    AZURE_ML_DEPLOYMENT={YOUR-AZURE-ML-ENDPOINT-KEY}
     ```
 4. Login to your Azure account
     ```bash
@@ -272,21 +273,34 @@ This process may take about an hour to complete, depending on your rate limits.
 
 
 ### 7. Convert Parquet Files to CSV
-After indexing, use the `notebook.ipynb` file to convert the following Parquet files to CSV under the `data` folder:
+After indexing, use the `notebook.ipynb` file to convert the following Parquet files to CSV and save them in the `data` folder:
 - `final_documents`
 - `final_text_units`
 - `final_communities`
 - `final_community_reports`
-You can also generate embeddings of `full_content` field of the `final_community_reports` to a new column called `full_content_vector` manually in your `final_community_reports.csv` file. 
+Once the CSV files are in the `data` folder, proceed to the next step to create additional vector fields and generate embeddings.
 
+### 8. Generate embeddings
+Embeddings need to be generated during post-provisioning to modify the CSV files for `final_text_units` and `final_community_reports`. 
 
-### 8. Deploy Your Project
-You need to select the option (true or false) to generate embeddings during post-provisioning or not by configuring RUN_POST_EMBEDDING parameter in the `scripts/setup_postgres_seeddata.sh` file depending on your csv file already contains the embeddings or not in the previous step.  Run the deployment command to finalize the process:
+Before running the initial deployment, set the RUN_POST_EMBEDDING parameter to `true` in the `scripts/setup_postgres_seeddata.sh` file. This ensures that new fields are created and embeddings are generated. Then, execute:
 ```
 azd up
 ```
-Follow the instructions provided in the earlier steps to complete the deployment.
+Once the tables with embeddings are generated, convert them into CSV files and place them in the `data` folder. This will speed up future deployments.
 
+
+### 9. Deploy Your Project
+Finally, after generating the embeddings and saving them in CSV format, update the RUN_POST_EMBEDDING parameter to `false` in the `scripts/setup_postgres_seeddata.sh` file to prevent redundant processing.
+
+Run the following command to complete the deployment:
+```
+azd up
+```
+If the server is already running, please execute the following command first to re-provision the servers:
+```
+azd down
+```
 
 ## Notes
 - Ensure all necessary configurations in `.env` and `settings.yaml` are accurate.
