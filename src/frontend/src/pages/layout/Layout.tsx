@@ -4,6 +4,7 @@ import styles from "./Layout.module.css";
 import { PAIDRetrievalMode } from "../../api";
 import React, { useContext } from 'react';
 import { AppStateContext } from '../../AppStateContext/AppStateContext';
+import packageJson from "../../../package.json";
 
 interface RetrievalModeProps {
     updatePAIDRetrievalMode: (retrievalMode: PAIDRetrievalMode) => void;
@@ -89,7 +90,7 @@ const Layout = () => {
                         </label>
                     </div>
 
-                    <h4 className={styles.headerRightText}>Demo: GraphRAG on PostgreSQL</h4>
+                    <h4 className={styles.headerRightText}>Demo: GraphRAG on PostgreSQL (v{packageJson.version})</h4>
                 </div>
             </header>
             
