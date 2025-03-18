@@ -80,6 +80,39 @@
     AZURE_ML_ENDPOINT_KEY={YOUR-AZURE-ML-ENDPOINT-KEY}
     AZURE_ML_DEPLOYMENT={YOUR-AZURE-ML-ENDPOINT-KEY}
     ```
+
+    （日本語版追加説明）
+    - 他の項目は以下を参考に設定してください。
+    ```bash
+    # Database Configuration
+    POSTGRES_HOST=(Semantic-Ranker-Solution-PostgreSQLの$AZURE_POSTGRES_HOST)
+    POSTGRES_USERNAME=(Semantic-Ranker-Solution-PostgreSQLの$AZURE_POSTGRES_USERNAME)
+    POSTGRES_PASSWORD=(Semantic-Ranker-Solution-PostgreSQLで"postgresAdminLoginPassword"として入力したパスワード）
+    POSTGRES_DATABASE=(Semantic-Ranker-Solution-PostgreSQLの$AZURE_POSTGRES_DB_NAME)
+    POSTGRES_SSL=enable
+
+    # Workspace Path
+    WORKSPACE=/workspace
+
+    # PostgreSQL User Configuration
+    POSTGRES_USER_ID=1000
+    POSTGRES_USER_NAME=postgres
+    POSTGRES_USER_SHELL=/bin/bash
+
+    # PostgreSQL and pgenv Versions
+    PGENV_VERSION=1.3.7
+    PG_VERSION=16.8
+
+    # OpenAI Configuration
+    OPENAI_CHAT_HOST=azure
+    OPENAI_EMBED_HOST=azure
+
+    # Azure ML Configuration
+    AZURE_ML_SCORING_ENDPOINT=(Semantic-Ranker-Solution-PostgreSQLで保存したAzure MLのエンドポイント情報)
+    AZURE_ML_ENDPOINT_KEY=(Semantic-Ranker-Solution-PostgreSQLで保存したAzure MLのアクセスキー)
+    AZURE_ML_DEPLOYMENT=bge-v2-m3-1
+    ```
+
 4. Azure アカウントにログインします。
     ```bash
     azd auth login
